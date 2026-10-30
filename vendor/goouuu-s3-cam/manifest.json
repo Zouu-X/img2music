@@ -1,0 +1,104 @@
+[
+  {
+    "file": "hardware/ESP32S3-CAM-KZB-V2_0.pdf",
+    "source": "/Users/zoe/Downloads/ESP32-S3-CAM带摄像头资料小智最新/CAM智能扩展板新版本打字V2.0版本教程/ESP32S3-CAM-KZB-V2_0.pdf",
+    "bytes": 354427,
+    "sha256": "f62cafc970a7458d05531ee0708b9c3c818bf4a35101744e1707971fdec92ae8"
+  },
+  {
+    "file": "hardware/CAM智能扩展板介绍.jpg",
+    "source": "/Users/zoe/Downloads/ESP32-S3-CAM带摄像头资料小智最新/CAM智能扩展板新版本打字V2.0版本教程/CAM智能扩展板介绍.jpg",
+    "bytes": 200823,
+    "sha256": "eed60584c946ca2952137a0f00a168af122f4f2b494c20272bb2d1ea4fe4e4b9"
+  },
+  {
+    "file": "hardware/CAM智能扩展板尺寸图.png",
+    "source": "/Users/zoe/Downloads/ESP32-S3-CAM带摄像头资料小智最新/CAM智能扩展板新版本打字V2.0版本教程/CAM智能扩展板尺寸图.png",
+    "bytes": 168224,
+    "sha256": "964ddd86efbbd2d18736876afb3cb5edf1c9b85f1622c4f221e65be02bf92a6b"
+  },
+  {
+    "file": "hardware/2次开发参数选择.png",
+    "source": "/Users/zoe/Downloads/ESP32-S3-CAM带摄像头资料小智最新/CAM智能扩展板新版本打字V2.0版本教程/2次开发参数选择.png",
+    "bytes": 123616,
+    "sha256": "81d035dd0b2c74155210ee900226b7839929af2eac1660a3e5aa6ae8279eade8"
+  },
+  {
+    "file": "hardware/2个接口都可以烧录，只是打开软件选择不一样.png",
+    "source": "/Users/zoe/Downloads/ESP32-S3-CAM带摄像头资料小智最新/CAM智能扩展板新版本打字V2.0版本教程/2个接口都可以烧录，只是打开软件选择不一样.png",
+    "bytes": 223666,
+    "sha256": "69c2dad07ace7338efd865e15e8de9b672248c7a7cc3a53cb88612cf55740f19"
+  },
+  {
+    "file": "hardware/CAM扩展板套件安装视频.mp4",
+    "source": "/Users/zoe/Downloads/ESP32-S3-CAM带摄像头资料小智最新/CAM智能扩展板新版本打字V2.0版本教程/CAM扩展板套件安装视频.mp4",
+    "bytes": 4981222,
+    "sha256": "438bc91f41c39eb14e28949ff5b68249aca6e39f959c0e21325a51d4a55b049e"
+  },
+  {
+    "file": "hardware/CAM开发板引脚图片1.png",
+    "source": "/Users/zoe/Downloads/ESP32-S3-CAM带摄像头资料小智最新/面包板DIY教程 ESP32-S3-CAM摄像头小智资料包/CAM开发板引脚图片1.png",
+    "bytes": 353600,
+    "sha256": "683d56861e16a1f07f80045fcfbb1745dbb72bb71d310152b0d28b363e0c7975"
+  },
+  {
+    "file": "hardware/CAM开发板接线图2.jpg",
+    "source": "/Users/zoe/Downloads/ESP32-S3-CAM带摄像头资料小智最新/面包板DIY教程 ESP32-S3-CAM摄像头小智资料包/CAM开发板接线图2.jpg",
+    "bytes": 1116414,
+    "sha256": "74b544d4e7b5f25282d3dd1042ca4fcc899dc09c272423dd7505a22447057ab5"
+  },
+  {
+    "file": "source/main/boards/bread-compact-wifi-s3cam/config.h",
+    "source": ".local/vendor-extract/xiaozhi-esp32-2.5.2/main/boards/bread-compact-wifi-s3cam/config.h",
+    "bytes": 8896,
+    "sha256": "3833b7e5193bea11d386d6b38591ff9144204b3175d0c19d2cce624061ea6376"
+  },
+  {
+    "file": "source/main/boards/bread-compact-wifi-s3cam/config.json",
+    "source": ".local/vendor-extract/xiaozhi-esp32-2.5.2/main/boards/bread-compact-wifi-s3cam/config.json",
+    "bytes": 378,
+    "sha256": "68eb082ddf4a5a682cc4bae5448d2aeb2f3de2d7173944eb70a03c52a5ee0caa"
+  },
+  {
+    "file": "source/main/boards/bread-compact-wifi-s3cam/README.md",
+    "source": ".local/vendor-extract/xiaozhi-esp32-2.5.2/main/boards/bread-compact-wifi-s3cam/README.md",
+    "bytes": 572,
+    "sha256": "61d08a5c2d9dcb7bbb50e1083526ce0a012f418f418775421e24ee9d65fb0968"
+  },
+  {
+    "file": "source/main/boards/bread-compact-wifi-s3cam/compact_wifi_board_s3cam.cc",
+    "source": ".local/vendor-extract/xiaozhi-esp32-2.5.2/main/boards/bread-compact-wifi-s3cam/compact_wifi_board_s3cam.cc",
+    "bytes": 9973,
+    "sha256": "94fd61a8dbb939cbe921805c5ec2f0620af2b5c58ca7d5dfb95d6727c66964af"
+  },
+  {
+    "file": "source/main/boards/bread-compact-wifi-s3cam/power_manager.h",
+    "source": ".local/vendor-extract/xiaozhi-esp32-2.5.2/main/boards/bread-compact-wifi-s3cam/power_manager.h",
+    "bytes": 6007,
+    "sha256": "b70dc715cf3501940cb6429bb3ac05b3d8611e9b221835faa8ca0e5f2e253e59"
+  },
+  {
+    "file": "source/main/audio/codecs/no_audio_codec.cc",
+    "source": ".local/vendor-extract/xiaozhi-esp32-2.5.2/main/audio/codecs/no_audio_codec.cc",
+    "bytes": 13438,
+    "sha256": "4e9d0f9325e9d39b8791f39dcd2952236be5ec4fbf8bd940b825044d21b6cc81"
+  },
+  {
+    "file": "source/main/audio/codecs/no_audio_codec.h",
+    "source": ".local/vendor-extract/xiaozhi-esp32-2.5.2/main/audio/codecs/no_audio_codec.h",
+    "bytes": 1743,
+    "sha256": "5c8e83d329ebabd796306a931787b4003828dff21b57b491d8a24813feb136bf"
+  },
+  {
+    "file": "source/LICENSE",
+    "source": ".local/vendor-extract/xiaozhi-esp32-2.5.2/LICENSE",
+    "bytes": 1140,
+    "sha256": "0a5a839033bfe18fe75d32b50d9d028912cf876f69ef59c2791aeb2971335d05"
+  },
+  {
+    "file": "source/sdkconfig",
+    "source": ".local/vendor-extract/xiaozhi-esp32-2.5.2/sdkconfig",
+    "bytes": 142388,
+    "sha256": "6d431253758b87c8d484ab56a3e82460696e4de2189a4a2fa843b84a90ad24b2"
+  }
+]

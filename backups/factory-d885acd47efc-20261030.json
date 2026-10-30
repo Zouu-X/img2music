@@ -1,0 +1,32 @@
+{
+  "date": "2026-10-30",
+  "mac": "d8:85:ac:d4:7e:fc",
+  "chip": "ESP32-S3 rev v0.2",
+  "bytes": 16777216,
+  "sha256": "cd0f30ac9491da499eaf2167f07b5accf23cf6779c506110431aa766f346273e",
+  "baud": 460800,
+  "file": "factory-d885acd47efc-20261030.bin",
+  "partitions": [
+    {
+      "type": 1,
+      "subtype": 2,
+      "offset": "0x9000",
+      "size": "0x6000",
+      "label": "nvs"
+    },
+    {
+      "type": 1,
+      "subtype": 1,
+      "offset": "0xf000",
+      "size": "0x1000",
+      "label": "phy_init"
+    },
+    {
+      "type": 0,
+      "subtype": 0,
+      "offset": "0x10000",
+      "size": "0x100000",
+      "label": "factory"
+    }
+  ]
+}
