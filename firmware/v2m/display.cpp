@@ -27,7 +27,17 @@ constexpr int kProgressX = 12;
 constexpr int kProgressY = 310;
 constexpr int kProgressWidth = 216;
 constexpr int kProgressHeight = 4;
-constexpr int64_t kProgressIntervalUs = 250000;
+constexpr int kStateY = 234;
+constexpr int kStateHeight = 29;
+constexpr int kDrumsX = 132;
+constexpr int kDrumsY = 8;
+constexpr int kDrumsWidth = 96;
+constexpr int kDrumsHeight = 30;
+constexpr int kScanWidth = 2;
+// Merge nearby old/new lines into one transfer, but do not redraw a large gap
+// after a delayed update or an active-song restart.
+constexpr int kMaxMergedScanWidth = 8;
+constexpr int64_t kProgressIntervalUs = 50000;
 constexpr size_t kDmaBytes = kWidth * kChunkRows * sizeof(uint16_t);
 
 constexpr uint16_t rgb565(uint8_t red, uint8_t green, uint8_t blue) {
@@ -53,10 +63,18 @@ bool attempted = false;
 bool isReady = false;
 bool disabled = false;
 bool backlightConfigured = false;
+bool drumsEnabled = false;
 State currentState = State::Starting;
 uint32_t photoFrames = 0;
 int progressPixels = 0;
+int scanX = -1;
+int photoX = 0;
+int photoY = kPhotoY;
+int photoWidth = kWidth;
+int photoHeight = kPhotoHeight;
 int64_t lastProgressUs = 0;
+
+int scanWidth() { return photoWidth < kScanWidth ? photoWidth : kScanWidth; }
 
 bool IRAM_ATTR onTransferDone(esp_lcd_panel_io_handle_t,
                              esp_lcd_panel_io_event_data_t*, void* context) {
@@ -117,15 +135,29 @@ void centeredText(const ui_assets::TextBitmap& bitmap, int y, uint16_t color) {
   drawText(bitmap, (kWidth - static_cast<int>(bitmap.width)) / 2, y, color);
 }
 
-bool flushRect(int x, int y, int width, int height) {
+bool flushRect(int x, int y, int width, int height, int overlayScanX = -1) {
   if (disabled || !panel || !framebuffer || !dmaBytes || !transferDone) return false;
-  for (int row = 0; row < height; row += kChunkRows) {
-    const int rows = height - row < kChunkRows ? height - row : kChunkRows;
+  if (width <= 0 || height <= 0 || x < 0 || y < 0 ||
+      width > kWidth - x || height > kHeight - y) return false;
+  // Wide rectangles still use 16 rows; a narrow scan strip fits all 180 rows
+  // in the same staging allocation and therefore needs only one color transfer.
+  const int rowsPerTransfer = kDmaBytes / (static_cast<size_t>(width) * sizeof(uint16_t));
+  for (int row = 0; row < height; row += rowsPerTransfer) {
+    const int rows = height - row < rowsPerTransfer ? height - row : rowsPerTransfer;
     size_t output = 0;
     for (int line = 0; line < rows; ++line) {
       const uint16_t* pixels = framebuffer + (y + row + line) * kWidth + x;
       for (int column = 0; column < width; ++column) {
-        const uint16_t pixel = pixels[column];
+        const int targetX = x + column;
+        const int targetY = y + row + line;
+        uint16_t pixel = pixels[column];
+        if (overlayScanX >= 0 && targetX >= overlayScanX &&
+            targetX < overlayScanX + scanWidth() &&
+            targetY >= photoY && targetY < photoY + photoHeight) {
+          // A dark edge and a bright cyan edge stay visible on light and dark
+          // photos. Only staging bytes change; the retained photo stays exact.
+          pixel = scanWidth() > 1 && targetX == overlayScanX ? kBackground : kCyan;
+        }
         dmaBytes[output++] = static_cast<uint8_t>(pixel >> 8);
         dmaBytes[output++] = static_cast<uint8_t>(pixel & 0xffU);
       }
@@ -139,6 +171,31 @@ bool flushRect(int x, int y, int width, int height) {
     }
   }
   return true;
+}
+
+bool moveScanLine(int nextX) {
+  if (nextX == scanX) return true;
+  if (scanX >= 0 && nextX >= 0) {
+    const int left = scanX < nextX ? scanX : nextX;
+    const int right = scanX > nextX ? scanX : nextX;
+    const int width = right - left + scanWidth();
+    if (width <= kMaxMergedScanWidth) {
+      // Old line pixels come from the unchanged photo; new line is an overlay.
+      if (!flushRect(left, photoY, width, photoHeight, nextX)) return false;
+      scanX = nextX;
+      return true;
+    }
+  }
+  if (scanX >= 0 && !flushRect(scanX, photoY, scanWidth(), photoHeight)) return false;
+  if (nextX >= 0 && !flushRect(nextX, photoY, scanWidth(), photoHeight, nextX)) return false;
+  scanX = nextX;
+  return true;
+}
+
+void drawDrums() {
+  fillRect(kDrumsX, kDrumsY, kDrumsWidth, kDrumsHeight, kBackground);
+  const ui_assets::TextBitmap& label = drumsEnabled ? ui_assets::kDrumsOn : ui_assets::kDrumsOff;
+  drawText(label, kWidth - 12 - label.width, 14, drumsEnabled ? kGreen : kMuted);
 }
 
 uint16_t stateColor(State state) {
@@ -183,8 +240,8 @@ void drawState(State state) {
     case State::Stopped:
     case State::Error: break;
   }
-  fillRect(0, 238, kWidth, 35, kBackground);
-  centeredText(stateText(state), 243, stateColor(state));
+  fillRect(0, kStateY, kWidth, kStateHeight, kBackground);
+  centeredText(stateText(state), 236, stateColor(state));
   drawProgress();
   lastProgressUs = esp_timer_get_time();
 }
@@ -252,10 +309,12 @@ bool begin() {
   if (!check("panel-on", esp_lcd_panel_disp_on_off(panel, true))) return false;
 
   fillRect(0, 0, kWidth, kHeight, kBackground);
-  centeredText(ui_assets::kBrand, 12, kWhite);
+  drawText(ui_assets::kBrand, 12, 12, kWhite);
+  drawDrums();
   fillRect(0, kPhotoY, kWidth, kPhotoHeight, kPhotoBackground);
   centeredText(ui_assets::kNoPhoto, 130, kMuted);
-  centeredText(ui_assets::kHint, 279, kMuted);
+  centeredText(ui_assets::kHintCapture, 267, kMuted);
+  centeredText(ui_assets::kHintControls, 287, kMuted);
   drawState(State::Starting);
   if (!flushRect(0, 0, kWidth, kHeight)) return false;
   if (!check("backlight-on", gpio_set_level(
@@ -268,9 +327,12 @@ bool begin() {
 bool ready() { return isReady; }
 
 void showState(State state) {
-  if (!isReady || currentState == state) return;
+  if (!isReady || (currentState == state && state != State::Playing)) return;
+  // Replaying an active song must reset even if its label remains Playing.
+  // Non-playing states restore the clean photo, including completion and stop.
+  if (!moveScanLine(state == State::Playing && photoFrames ? photoX : -1)) return;
   drawState(state);
-  if (!flushRect(0, 238, kWidth, 35)) return;
+  if (!flushRect(0, kStateY, kWidth, kStateHeight)) return;
   flushRect(kProgressX, kProgressY, kProgressWidth, kProgressHeight);
 }
 
@@ -283,8 +345,8 @@ bool showPhoto(const uint8_t* rgb, uint16_t width, uint16_t height) {
   }
   // Preserve every part of the image. The normal 4:3 camera frame fills the
   // entire 240 x 180 area; other aspect ratios receive centered letterboxing.
-  int photoWidth = kWidth;
-  int photoHeight = kPhotoHeight;
+  photoWidth = kWidth;
+  photoHeight = kPhotoHeight;
   if (static_cast<uint32_t>(width) * kPhotoHeight > static_cast<uint32_t>(height) * kWidth) {
     photoHeight = static_cast<uint32_t>(height) * kWidth / width;
     if (!photoHeight) photoHeight = 1;
@@ -292,15 +354,16 @@ bool showPhoto(const uint8_t* rgb, uint16_t width, uint16_t height) {
     photoWidth = static_cast<uint32_t>(width) * kPhotoHeight / height;
     if (!photoWidth) photoWidth = 1;
   }
-  const int offsetX = (kWidth - photoWidth) / 2;
-  const int offsetY = kPhotoY + (kPhotoHeight - photoHeight) / 2;
+  photoX = (kWidth - photoWidth) / 2;
+  photoY = kPhotoY + (kPhotoHeight - photoHeight) / 2;
+  scanX = -1;  // The complete photo area below replaces any previous overlay.
   fillRect(0, kPhotoY, kWidth, kPhotoHeight, kPhotoBackground);
   for (int y = 0; y < photoHeight; ++y) {
     const size_t sourceY = static_cast<uint32_t>(y) * height / photoHeight;
     for (int x = 0; x < photoWidth; ++x) {
       const size_t sourceX = static_cast<uint32_t>(x) * width / photoWidth;
       const uint8_t* source = rgb + (sourceY * width + sourceX) * 3;
-      framebuffer[(offsetY + y) * kWidth + offsetX + x] = rgb565(source[0], source[1], source[2]);
+      framebuffer[(photoY + y) * kWidth + photoX + x] = rgb565(source[0], source[1], source[2]);
     }
   }
   if (!flushRect(0, kPhotoY, kWidth, kPhotoHeight)) return false;
@@ -312,20 +375,35 @@ void setProgress(uint32_t frames, uint32_t totalFrames) {
   if (!isReady || currentState != State::Playing) return;
   if (frames > totalFrames) frames = totalFrames;
   const int pixels = totalFrames ? static_cast<uint64_t>(frames) * kProgressWidth / totalFrames : 0;
-  if (pixels == progressPixels) return;
+  const int scanRange = photoWidth - scanWidth();
+  int nextScanX = -1;
+  if (photoFrames) {
+    nextScanX = photoX + static_cast<int>(totalFrames ?
+        static_cast<uint64_t>(frames) * scanRange / totalFrames : 0);
+  }
+  if (pixels == progressPixels && nextScanX == scanX) return;
   const int64_t now = esp_timer_get_time();
   const bool final = totalFrames && frames == totalFrames;
   if (!final && now - lastProgressUs < kProgressIntervalUs) return;
+  if (!moveScanLine(nextScanX)) return;
   const int previousPixels = progressPixels;
   progressPixels = pixels;
   lastProgressUs = now;
   const int changedX = pixels < previousPixels ? pixels : previousPixels;
   const int changedWidth = pixels < previousPixels ? previousPixels - pixels : pixels - previousPixels;
-  fillRect(kProgressX + changedX, kProgressY, changedWidth, kProgressHeight,
-           pixels < previousPixels ? kTrack : kGreen);
-  // Transfer only the changed segment while audio is active: normally tens of
-  // bytes; even a whole bar is 1,728 bytes (~0.69 ms on the SPI wire).
-  flushRect(kProgressX + changedX, kProgressY, changedWidth, kProgressHeight);
+  if (changedWidth > 0) {
+    fillRect(kProgressX + changedX, kProgressY, changedWidth, kProgressHeight,
+             pixels < previousPixels ? kTrack : kGreen);
+    flushRect(kProgressX + changedX, kProgressY, changedWidth, kProgressHeight);
+  }
+}
+
+void setDrumsEnabled(bool enabled) {
+  if (drumsEnabled == enabled) return;
+  drumsEnabled = enabled;
+  if (!isReady) return;
+  drawDrums();
+  flushRect(kDrumsX, kDrumsY, kDrumsWidth, kDrumsHeight);
 }
 
 uint32_t frameCount() { return photoFrames; }

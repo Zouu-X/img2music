@@ -6,6 +6,9 @@ namespace board {
 constexpr bool kCameraPinsVerified = true;
 constexpr bool kAudioPinsVerified = true;
 constexpr int kButton = 0;  // ESP32-S3 BOOT; use only after normal startup.
+// Bottom board BUTTON1 shares GPIO0 with BOOT. BUTTON2 is the only extra
+// independent button; active low, with the internal pull-up enabled at runtime.
+constexpr int kExtraButton = 46;
 constexpr int kCameraXclk = 15;
 constexpr int kCameraSda = 4;
 constexpr int kCameraScl = 5;

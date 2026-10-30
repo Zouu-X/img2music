@@ -5,29 +5,57 @@
 #include <driver/i2s_std.h>
 
 #include "board_config.h"
+#include "controls.h"
 #include "display.h"
 #include "sonification.h"
 
 namespace {
 constexpr size_t kRgbBytes = 320 * 240 * 3;
 constexpr size_t kBlockFrames = 256;
+constexpr size_t kDmaBlocks = 4;
 uint8_t* rgb = nullptr;
 i2s_chan_handle_t audio = nullptr;
 bool cameraReady = false;
 bool haveSong = false;
 bool playing = false;
+bool audioRunning = false;
+bool drumsEnabled = false;
+v2m::Button photoButton, extraButton;
 v2m::Song song{};
 v2m::Synth synth;
 int16_t pcm[kBlockFrames * 2];
 uint32_t completed = 0;
+portMUX_TYPE clockMux = portMUX_INITIALIZER_UNLOCKED;
+volatile uint32_t sentFrames = 0, submittedFrames = 0, underruns = 0;
+uint32_t musicalFrames = 0;
+uint32_t maxRenderUs = 0, maxDisplayUs = 0;
+
+bool IRAM_ATTR onAudioSent(i2s_chan_handle_t, i2s_event_data_t* event, void*) {
+  portENTER_CRITICAL_ISR(&clockMux);
+  const uint32_t next = sentFrames + event->size / (2 * sizeof(int16_t));
+  if (sentFrames < musicalFrames && next > submittedFrames) ++underruns;
+  sentFrames = next;
+  portEXIT_CRITICAL_ISR(&clockMux);
+  return false;
+}
+
+uint32_t playedFrames() {
+  portENTER_CRITICAL(&clockMux);
+  const uint32_t value = sentFrames;
+  portEXIT_CRITICAL(&clockMux);
+  return value;
+}
 
 void status() {
-  Serial.printf("STATUS camera=%d audio=%d song=%d playing=%d completed=%lu heap=%lu psram=%lu display=%d photos=%lu\n",
+  Serial.printf("STATUS camera=%d audio=%d song=%d playing=%d completed=%lu heap=%lu psram=%lu display=%d photos=%lu drums=%d key2=%d sent=%lu underruns=%lu render_us=%lu display_us=%lu\n",
                 cameraReady, audio != nullptr, haveSong, playing,
                 static_cast<unsigned long>(completed),
                 static_cast<unsigned long>(ESP.getFreeHeap()),
                 static_cast<unsigned long>(ESP.getFreePsram()), display::ready(),
-                static_cast<unsigned long>(display::frameCount()));
+                static_cast<unsigned long>(display::frameCount()), drumsEnabled,
+                digitalRead(board::kExtraButton), static_cast<unsigned long>(playedFrames()),
+                static_cast<unsigned long>(underruns), static_cast<unsigned long>(maxRenderUs),
+                static_cast<unsigned long>(maxDisplayUs));
 }
 
 void captureError(const char* message) {
@@ -88,7 +116,7 @@ bool initAudio() {
     return false;
   }
   i2s_chan_config_t channel = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
-  channel.dma_desc_num = 4;
+  channel.dma_desc_num = kDmaBlocks;
   channel.dma_frame_num = kBlockFrames;
   channel.auto_clear = true;
   esp_err_t error = i2s_new_channel(&channel, &audio, nullptr);
@@ -103,7 +131,11 @@ bool initAudio() {
     config.gpio_cfg.din = I2S_GPIO_UNUSED;
     error = i2s_channel_init_std_mode(audio, &config);
   }
-  if (error == ESP_OK) error = i2s_channel_enable(audio);
+  if (error == ESP_OK) {
+    i2s_event_callbacks_t callbacks{};
+    callbacks.on_sent = onAudioSent;
+    error = i2s_channel_register_event_callback(audio, &callbacks, nullptr);
+  }
   if (error != ESP_OK) {
     Serial.printf("ERROR audio init: %s\n", esp_err_to_name(error));
     if (audio) i2s_del_channel(audio);
@@ -124,16 +156,69 @@ bool writeAudio(const int16_t* data, size_t frames) {
                   static_cast<unsigned>(written), static_cast<unsigned>(bytes));
     return false;
   }
+  portENTER_CRITICAL(&clockMux);
+  submittedFrames += frames;
+  portEXIT_CRITICAL(&clockMux);
   return true;
 }
 
-void startSong() {
+bool haltAudio() {
+  if (!audioRunning) return true;
+  const esp_err_t error = i2s_channel_disable(audio);
+  if (error != ESP_OK) {
+    Serial.printf("ERROR audio disable: %s\n", esp_err_to_name(error));
+    return false;
+  }
+  audioRunning = false;
+  return true;
+}
+
+void startSong(const char* source) {
   if (!haveSong) { captureError("ERROR take a photo first"); return; }
   if (!audio) { captureError("AUDIO unavailable; melody printed only"); return; }
+  playing = false;
+  if (!haltAudio()) { display::showState(display::State::Error); return; }
   display::showState(display::State::Playing);
+  synth.setDrumsEnabled(drumsEnabled);
   synth.start(song);
+  musicalFrames = synth.musicalFrames();
+  maxRenderUs = maxDisplayUs = 0;
+  portENTER_CRITICAL(&clockMux);
+  sentFrames = submittedFrames = underruns = 0;
+  portEXIT_CRITICAL(&clockMux);
+  // Prime the entire DMA ring before starting its clock. This aligns the first
+  // image column with the first audio sample, including when restarting mid-song.
+  for (size_t i = 0; i < kDmaBlocks; ++i) {
+    const size_t frames = synth.render(pcm, kBlockFrames);
+    size_t loaded = 0;
+    const size_t bytes = frames * 2 * sizeof(int16_t);
+    const esp_err_t error = i2s_channel_preload_data(audio, pcm, bytes, &loaded);
+    if (error != ESP_OK || loaded != bytes) {
+      Serial.printf("ERROR audio preload: %s bytes=%u/%u\n", esp_err_to_name(error),
+                    static_cast<unsigned>(loaded), static_cast<unsigned>(bytes));
+      display::showState(display::State::Error);
+      return;
+    }
+    submittedFrames += frames;
+  }
+  const esp_err_t error = i2s_channel_enable(audio);
+  if (error != ESP_OK) {
+    Serial.printf("ERROR audio enable: %s\n", esp_err_to_name(error));
+    display::showState(display::State::Error);
+    return;
+  }
+  audioRunning = true;
   playing = true;
-  Serial.println("PLAY begin");
+  Serial.printf("PLAY begin source=%s drums=%d musical_frames=%lu\n", source, drumsEnabled,
+                static_cast<unsigned long>(musicalFrames));
+}
+
+void toggleDrums(const char* source) {
+  drumsEnabled = !drumsEnabled;
+  synth.setDrumsEnabled(drumsEnabled);
+  display::setDrumsEnabled(drumsEnabled);
+  Serial.printf("DRUMS enabled=%d source=%s frame=%lu\n", drumsEnabled, source,
+                static_cast<unsigned long>(playedFrames()));
 }
 
 void capture(const char* source) {
@@ -176,10 +261,13 @@ void capture(const char* source) {
   }
   Serial.printf("SONG capture_ms=%lu brightness=%.3f saturation=%.3f edge=%.3f bpm=%u root=%u scale=%s notes=",
                 static_cast<unsigned long>(analysisMs), song.brightness,
-                song.saturation, song.edge, song.bpm, song.root, song.minor ? "minor" : "major");
+                song.saturation, song.edge, song.bpm, song.root,
+                song.minor ? "minor-pentatonic" : "major-pentatonic");
   for (size_t i = 0; i < v2m::kNoteCount; ++i) Serial.printf("%s%u", i ? "," : "", song.notes[i].midi);
+  Serial.print(" timbres=");
+  for (size_t i = 0; i < v2m::kNoteCount; ++i) Serial.printf("%s%s", i ? "," : "", v2m::timbreName(song.notes[i].timbre));
   Serial.println();
-  startSong();
+  startSong(source);
 }
 
 void exportJpeg() {
@@ -205,16 +293,34 @@ void exportJpeg() {
 
 void pumpAudio() {
   if (!playing) return;
+  // DMA also advances while sending auto-cleared silence. Do not keep drawing
+  // a misleading playhead (or report success) if the producer ever falls behind.
+  if (underruns) {
+    playing = false;
+    haltAudio();
+    Serial.println("ERROR audio underrun; replay to restart the shared timeline");
+    display::showState(display::State::Error);
+    status();
+    return;
+  }
+  const uint32_t renderStarted = micros();
   const size_t frames = synth.render(pcm, kBlockFrames);
+  const uint32_t renderUs = micros() - renderStarted;
+  if (renderUs > maxRenderUs) maxRenderUs = renderUs;
   if (frames && !writeAudio(pcm, frames)) {
     playing = false;
+    haltAudio();
     display::showState(display::State::Error);
     return;
   }
-  display::setProgress(synth.renderedFrames(), synth.totalFrames());
-  if (synth.done()) {
-    // The synth already supplies 100 ms of silence, longer than the DMA queue.
+  const uint32_t sent = playedFrames();
+  const uint32_t displayStarted = micros();
+  display::setProgress(sent, musicalFrames);
+  const uint32_t displayUs = micros() - displayStarted;
+  if (displayUs > maxDisplayUs) maxDisplayUs = displayUs;
+  if (synth.done() && sent >= synth.totalFrames() && !underruns) {
     playing = false;
+    haltAudio();
     ++completed;
     display::showState(display::State::Done);
     Serial.println("PLAY complete");
@@ -222,31 +328,32 @@ void pumpAudio() {
   }
 }
 
-void pollButton() {
-  static bool previous = HIGH, stable = HIGH;
-  static uint32_t changedAt = 0;
-  const bool current = digitalRead(board::kButton);
-  if (current != previous) { previous = current; changedAt = millis(); }
-  if (current != stable && millis() - changedAt >= 35) {
-    stable = current;
-    if (stable == LOW) capture("button");
-  }
+void pollButtons() {
+  const uint32_t now = millis();
+  const auto photo = photoButton.update(digitalRead(board::kButton) == LOW, now);
+  const auto extra = extraButton.update(digitalRead(board::kExtraButton) == LOW, now);
+  if (photo == v2m::ButtonEvent::Pressed) capture("button");
+  if (extra == v2m::ButtonEvent::ShortPress) startSong("key2-short");
+  if (extra == v2m::ButtonEvent::LongPress) toggleDrums("key2-long");
 }
 }  // namespace
 
 void setup() {
   Serial.begin(115200);
   delay(700);
-  Serial.println("\nV2M 0.2.0");
+  Serial.println("\nV2M 0.3.0");
   Serial.printf("DEVICE chip=%s flash=%lu psram=%lu\n", ESP.getChipModel(),
                 static_cast<unsigned long>(ESP.getFlashChipSize()),
                 static_cast<unsigned long>(ESP.getPsramSize()));
   pinMode(board::kButton, INPUT_PULLUP);
+  pinMode(board::kExtraButton, INPUT_PULLUP);
+  photoButton.begin(digitalRead(board::kButton) == LOW, millis());
+  extraButton.begin(digitalRead(board::kExtraButton) == LOW, millis());
   display::begin();
   cameraReady = initCamera();
   const bool audioReady = initAudio();
   display::showState(cameraReady && audioReady ? display::State::Ready : display::State::Error);
-  Serial.println("READY BOOT or c=photo+music p=replay x=stop s=status j=JPEG export");
+  Serial.println("READY BOOT/BUTTON1=capture BUTTON2=short replay/hold650ms drums; c=photo p=replay d=drums x=stop s=status j=JPEG");
   status();
 }
 
@@ -255,16 +362,16 @@ void loop() {
     const char c = Serial.read();
     if (c == 'c' || c == ' ') capture("serial-test");
     else if (c == 'j') exportJpeg();
-    else if (c == 'p' && !playing) startSong();
+    else if (c == 'p') startSong("serial-replay");
+    else if (c == 'd') toggleDrums("serial");
     else if (c == 'x') {
       playing = false;
-      // Replace queued sound with silence; auto-clear silences idle DMA buffers.
-      if (audio) { memset(pcm, 0, sizeof(pcm)); for (int i = 0; i < 4; ++i) if (!writeAudio(pcm, kBlockFrames)) break; }
+      haltAudio();
       display::showState(display::State::Stopped);
       Serial.println("PLAY stopped");
     } else if (c == 's') status();
   }
-  pollButton();
+  pollButtons();
   pumpAudio();
   delay(1);
 }
