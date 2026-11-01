@@ -1,13 +1,28 @@
 # V2M 图片转音乐装置 v0.3.0
 
-更新日期：2026-10-30。
+固件验证日期：2026-10-30。GitHub 接手资料更新：2026-11-01。
 
 在 ESP32-S3 上拍一张照片，根据图像特征生成旋律并通过喇叭播放，屏幕显示这张照片、中文状态、扫描线和播放进度。项目名暂用 V2M，不预设英文全称。
+
+## 从这里开始
+
+这是一个可在 ESP32-S3 上离线运行的拍照音乐装置。朋友使用同款硬件时，先按指南连接，再让自己的 Agent 建立本机工具和设备备份。
+
+- **给使用者：** [一步一步接线与体验](docs/GETTING_STARTED.md)
+- **给接手的 Agent：** 先读 [AGENTS.md](AGENTS.md)，再读 [关键上下文](docs/AGENT_HANDOFF.md)
+- **换一台电脑：** [安装、构建、新板备份与烧录](docs/SETUP.md)
+- **固件附件：** [GitHub 发布页](https://github.com/Zouu-X/img2music/releases)；源码和文档以本仓库 `main` 为入口
+
+已验证套件是 **GOOUUU ESP32-S3-CAM V1.5 + S3-CAM-DevPro V2.0 + ST7789 240×320 + 喇叭**。主板必须插到底板上；屏幕 GND 对齐；USB 用 CH340 / TTL 口。接线图和安装视频都在仓库内，新板不能照抄原作者的 MAC、串口或完整 Flash 备份。
+
+可以直接把下面这段交给朋友的 Agent：
+
+> 请克隆 https://github.com/Zouu-X/img2music.git，先读 AGENTS.md、docs/AGENT_HANDOFF.md 和 docs/GETTING_STARTED.md。我使用与项目相同的硬件，请逐步指导我接线、安装工具、备份我自己的板子、烧录并测试照片转音乐。不要照搬原作者的串口、设备编号或整片备份；请以实际识别为准。先跑通当前 v0.3.0，再讨论改动。
 
 ## 当前状态
 
 - V2M **v0.3.0 已编译、烧录并通过板上串口控制测试**：五声音阶、四种合成音色、可切换鼓点、照片扫描线，以及底板第二按键控制。三轮完成播放与中途重播、停止测试通过，音频断供计数均为 0；用户已确认重播、鼓点切换和屏幕扫描线正常，能听出鼓点变化。
-- 已验证的基线为 **v0.2.0**，Git 提交 `d502d25`、标签 `v0.2.0`；实物为 **GOOUUU ESP32-S3-CAM V1.5** 主板、**S3-CAM-DevPro V2.0** 底板和 ST7789 240×320 屏幕。
+- 已验证的基线为 **v0.2.0**，原开发机提交 `d502d25`、公开标签 `v0.2.0`；实物为 **GOOUUU ESP32-S3-CAM V1.5** 主板、**S3-CAM-DevPro V2.0** 底板和 ST7789 240×320 屏幕。
 - 商家资料已归档，摄像头和音频引脚已核对并启用。实机识别为 ESP32-S3 rev v0.2、16 MB Flash、8 MB PSRAM；固件实际识别到摄像头 **OV3660（PID 0x3660）**。
 - v0.2.0 连续两轮串口拍照、显示照片、生成 16 音符和播放均完成；照片绘制各用 52 ms，两轮结束时空闲内存读数一致。**用户已确认“照片、状态和声音都正常”。**
 - BOOT 用法保持不变：v0.1 已实按触发拍照并完整播放，用户确认按下后自动播放；v0.2.0 两轮测试由串口触发，未新增实按测试。v0.3.0 已记录一次实体拍照触发，用户另确认底板 BUTTON2 的重播、鼓点切换和扫描线正常。
@@ -41,36 +56,42 @@
 
 ## 构建、烧录与检查
 
-本机复用 `/Users/zoe/Projects/seirei/.local` 内的 Arduino ESP32 **3.3.10**、esptool **4.12.0** 和 Python 环境，不修改旧工程。本项目缓存与产物位于 `.local/`、`build/`。`ARDUINO`、`ARDUINO_DATA` 可覆盖编译工具路径，`FLASH_PYTHON`、`FLASH_PORT` 可覆盖烧录工具和串口。
+依赖 Arduino ESP32 **3.3.10**、esptool **4.12.0**、Python / pyserial。按 [SETUP](docs/SETUP.md) 安装到当前电脑；构建脚本使用 `ARDUINO`、项目本地或 PATH 中的 CLI，`ARDUINO_DATA` 可覆盖平台目录。`FLASH_PYTHON`、`FLASH_PORT` 可覆盖解释器和实际串口。缓存、设备 profile、备份和构建产物留在 `.local/`、`build/`，不随 Git 克隆。
 
 ```sh
-./tools/test.sh
-./tools/build.sh
-./tools/flash.sh
+sh tools/test.sh
+sh tools/build.sh
+# 新板必须先完成 SETUP 中的 prepare_device.py --backup
+sh tools/flash.sh
 ```
 
-烧录脚本会重新编译，核对设备 MAC、完整备份 SHA-256、设备分区和构建分区，确认应用不超过 **1 MiB**，然后仅写入 `0x10000` 并独立校验。它只用于当前记录的这块板，不能直接用于其他设备。具体布局见 [partitions.csv](firmware/v2m/partitions.csv)。
+新板先用 `tools/prepare_device.py --port <实际串口> --backup` 备份并校验自己的 Flash，生成 `.local/device.json`。烧录脚本读取本机 profile，重新核对设备 MAC、完整备份 SHA-256、设备与构建分区，确认应用不超过 **1 MiB**，只写入 `0x10000` 并独立校验。不同设备或分区会拒绝烧录，不自动擦除或迁移分区。具体布局见 [partitions.csv](firmware/v2m/partitions.csv)。
 
 已验证的 v0.2.0 应用二进制为 440,064 字节，保存在 `build/releases/v2m-v0.2.0.bin`，摘要文件为 `build/releases/v0.2.0-SHA256SUMS`；对应源码为提交 `d502d25` / 标签 `v0.2.0`。更早的应用保留在 `build/releases/v2m-v0.1.0.bin`。这些都是应用备份，不是完整 Flash 镜像；完整出厂备份保持不变。v0.3.0 应用为 446,000 字节，保存在 `build/releases/v2m-v0.3.0.bin`；构建、烧录及验证摘要见 [验证记录](docs/VALIDATION.md)。
 
-串口工具不要与烧录或备份同时运行：
+以下历史 `build/` 路径在原开发机保留，新克隆不会包含它们；可从 [发布页](https://github.com/Zouu-X/img2music/releases) 取得附带摘要的应用固件。验证摘要已写入文档，历史日志不是克隆后必备输入。
+
+串口工具不要与烧录或备份同时运行；下例先将 `V2M_PORT` 设为本机识别的端口：
 
 ```sh
-# 查看状态；默认串口 /dev/cu.usbserial-110，重新插拔后可能变化
-/Users/zoe/Projects/seirei/.local/venv/bin/python tools/monitor.py --send s --seconds 3
+# 先运行 python -m serial.tools.list_ports -v 查看端口
+export V2M_PORT="<实际串口>"
+# 查看状态
+.local/venv/bin/python tools/monitor.py --port "$V2M_PORT" --send s --seconds 3
 # 串口触发一轮拍照和播放，并保存日志
-/Users/zoe/Projects/seirei/.local/venv/bin/python tools/monitor.py --send c --seconds 12 --out build/play.log
+.local/venv/bin/python tools/monitor.py --port "$V2M_PORT" --send c --seconds 12 --out build/play.log
 # 导出一张新照片供查看
-/Users/zoe/Projects/seirei/.local/venv/bin/python tools/capture.py --out build/camera.jpg
+.local/venv/bin/python tools/capture.py --port "$V2M_PORT" --out build/camera.jpg
 # 连续两轮检查拍照、照片传输和播放（实际画面、听感需现场确认）
-/Users/zoe/Projects/seirei/.local/venv/bin/python tools/device_check.py --cycles 2 --require-display --out build/device-check.log
+.local/venv/bin/python tools/device_check.py --port "$V2M_PORT" --cycles 2 --require-display --out build/device-check.log
 # v0.3.0 串口检查：鼓点切换、重播、播放中重启、停止后重播
 # 会拍一张照片并播放；不能替代 BUTTON2 实按及现场听音/扫线确认
-/Users/zoe/Projects/seirei/.local/venv/bin/python tools/check_controls.py --out build/controls-check.log
+.local/venv/bin/python tools/check_controls.py --port "$V2M_PORT" --out build/controls-check.log
 ```
 
 ## 文档与后续验证
 
+- [来源与第三方材料](THIRD_PARTY_NOTICES.md)
 - [硬件记录与接口约束](HARDWARE.md)
 - [商家资料索引](vendor/goouuu-s3-cam/README.md)
 - [验证记录、备份和已知限制](docs/VALIDATION.md)
