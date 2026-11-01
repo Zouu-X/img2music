@@ -15,7 +15,7 @@
 
 已验证套件是 **GOOUUU ESP32-S3-CAM V1.5 + S3-CAM-DevPro V2.0 + ST7789 240×320 + 喇叭**。主板必须插到底板上；屏幕 GND 对齐；USB 用 CH340 / TTL 口。接线图和安装视频都在仓库内，新板不能照抄原作者的 MAC、串口或完整 Flash 备份。
 
-可以直接把下面这段交给朋友的 Agent：
+可以直接把下面这段交给自己的 Agent：
 
 > 请克隆 https://github.com/Zouu-X/img2music.git，先读 AGENTS.md、docs/AGENT_HANDOFF.md 和 docs/GETTING_STARTED.md。我使用与项目相同的硬件，请逐步指导我接线、安装工具、备份我自己的板子、烧录并测试照片转音乐。不要照搬原作者的串口、设备编号或整片备份；请以实际识别为准。先跑通当前 v0.3.0，再讨论改动。
 
